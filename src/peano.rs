@@ -93,3 +93,61 @@ impl<A> DecrNat for S<A> {
 }
 
 assert_type_eq_all!(<Five as DecrNat>::Result, Four);
+
+pub struct True;
+pub struct False;
+
+pub trait IsNonZero {
+    type Result;
+}
+
+impl IsNonZero for Zero {
+    type Result = False;
+}
+impl<T> IsNonZero for S<T> {
+    type Result = True;
+}
+
+pub trait IncrNat {
+    type Result;
+}
+
+impl<T> IncrNat for T {
+    type Result = S<T>;
+}
+
+pub trait NonZero {}
+
+impl<T> NonZero for S<T> {}
+
+use crate::comptime::Make;
+
+impl Make<u8> for Zero {
+    fn make() -> u8 {
+        0
+    }
+}
+
+impl Make<u32> for Zero {
+    fn make() -> u32 {
+        0
+    }
+}
+
+impl<P> Make<u8> for S<P>
+where
+    P: Make<u8>,
+{
+    fn make() -> u8 {
+        P::make() + 1
+    }
+}
+
+impl<P> Make<u32> for S<P>
+where
+    P: Make<u32>,
+{
+    fn make() -> u32 {
+        P::make() + 1
+    }
+}

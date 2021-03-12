@@ -7,11 +7,7 @@ mod nats_typenum;
 pub use nats_typenum::*;
 
 #[cfg(not(feature = "use-typenum"))]
-mod nats_peano;
-#[cfg(not(feature = "use-typenum"))]
-pub use nats_peano::*;
-
-
+pub use crate::peano::*;
 
 pub struct Nil;
 pub struct Cons<H, R>(PhantomData<(H, R)>);
