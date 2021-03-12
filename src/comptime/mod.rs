@@ -2,89 +2,16 @@ use core::marker::PhantomData;
 use static_assertions::assert_type_eq_all;
 
 #[cfg(feature = "use-typenum")]
-mod nats {
-    pub struct True;
-    pub struct False;
-
-    pub trait IsNonZero {
-        type Result;
-    }
-
-    impl IsNonZero for typenum::U0 {
-        type Result = False;
-    }
-    impl<T, B> IsNonZero for typenum::UInt<T, B> {
-        type Result = True;
-    }
-
-    pub type Zero = typenum::U0;
-    pub type One = typenum::U1;
-    pub type Two = typenum::U2;
-    pub type Three = typenum::U3;
-    pub type Five = typenum::U5;
-
-    pub trait Add<T> {
-        type Sum;
-    }
-
-    impl<T, U> Add<T> for U
-    where
-        U: core::ops::Add<T>,
-    {
-        type Sum = <U as core::ops::Add<T>>::Output;
-    }
-
-    pub trait IncrNat {
-        type Result;
-    }
-
-    impl<T> IncrNat for T where T : std::ops::Add<typenum::B1>{
-        type Result = <T as std::ops::Add<typenum::B1>>::Output;
-    }
-    pub trait DecrNat {
-        type Result;
-    }
-
-    impl<T> DecrNat for T where T : std::ops::Sub<typenum::B1>{
-        type Result = <T as std::ops::Sub<typenum::B1>>::Output;
-    }
-}
+mod nats_typenum;
+#[cfg(feature = "use-typenum")]
+pub use nats_typenum::*;
 
 #[cfg(not(feature = "use-typenum"))]
-mod nats {
-    pub use crate::peano::{DecrNat, One, Two, Five, Four, Six, Three, Add};
+mod nats_peano;
+#[cfg(not(feature = "use-typenum"))]
+pub use nats_peano::*;
 
-    use crate::peano;
 
-    pub type Zero = peano::Zero;
-    pub struct True;
-    pub struct False;
-
-    pub trait IsNonZero {
-        type Result;
-    }
-
-    impl IsNonZero for Zero {
-        type Result = False;
-    }
-    impl<T> IsNonZero for peano::S<T> {
-        type Result = True;
-    }
-
-    pub trait IncrNat {
-        type Result;
-    }
-
-    impl<T> IncrNat for T {
-        type Result = peano::S<T>;
-    }
-
-    pub trait NonZero {}
-
-    impl<T> NonZero for peano::S<T> {}
-}
-
-pub use nats::*;
 
 pub struct Nil;
 pub struct Cons<H, R>(PhantomData<(H, R)>);
@@ -276,55 +203,5 @@ where
         let mut res = Tail::make();
         res.push(H::make());
         res
-    }
-}
-
-
-#[cfg(feature = "use-typenum")]
-impl<T> Make<u8> for T where T : typenum::Unsigned
-{
-    fn make() -> u8 {
-        T::to_u8()
-    }
-}
-#[cfg(feature = "use-typenum")]
-impl<T> Make<u32> for T where T : typenum::Unsigned
-{
-    fn make() -> u32 {
-        T::to_u32()
-    }
-}
-
-#[cfg(not(feature = "use-typenum"))]
-impl Make<u8> for Zero {
-    fn make() -> u8 {
-        0
-    }
-}
-
-#[cfg(not(feature = "use-typenum"))]
-impl Make<u32> for Zero {
-    fn make() -> u32 {
-        0
-    }
-}
-
-#[cfg(not(feature = "use-typenum"))]
-impl<P> Make<u8> for crate::peano::S<P>
-where
-    P: Make<u8>,
-{
-    fn make() -> u8 {
-        P::make() + 1
-    }
-}
-
-#[cfg(not(feature = "use-typenum"))]
-impl<P> Make<u32> for crate::peano::S<P>
-where
-    P: Make<u32>,
-{
-    fn make() -> u32 {
-        P::make() + 1
     }
 }
