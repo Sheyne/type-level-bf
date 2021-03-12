@@ -29,6 +29,15 @@ macro_rules! compile_bf {
     };
  }
 
+macro_rules! make_cons {
+    () => {
+        Nil
+    };
+    ($e:ty $(, $rest:ty)*) => {
+        Cons<$e, make_cons!($($rest),*)>
+    };
+}
+
 fn main() {
     {
         use comptime::*;
@@ -47,8 +56,7 @@ fn main() {
         }
         {
             type Echo = compile_bf!(,[.>,]);
-            type Initial =
-                MakeMachine<Cons<One, Cons<Three, Cons<Five, Cons<<Five as Add<Two>>::Sum, Nil>>>>>;
+            type Initial = MakeMachine<make_cons!(One, Three, Five, <Five as Add<Two>>::Sum, Two)>;
             type Output = <<Initial as RunMachine<Echo>>::Next as GetOutput>::Output;
 
             let out = <Output as Make<Vec<u8>>>::make();
