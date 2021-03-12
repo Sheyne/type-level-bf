@@ -94,49 +94,6 @@ impl<A> DecrNat for S<A> {
 
 assert_type_eq_all!(<Five as DecrNat>::Result, Four);
 
-// The whole U8 trait and implementations is so we can get a runtime
-// representation of our compile time numbers. Recall 2 = S<S<0>>,
-// but that S<S<Zero>> is a zero sized struct, it doesn't exist at
-// runtime. Here we say, for any type of the form S<S<S<..<0>>>>
-// you can call the function u8()->u8 to get an eight bit number
-// representing the value that the type encodes. The impls of the methods
-// will end up looking like:
-// impl U8 for S<S<S<Zero>>> { fn u8() -> u8 {return 1 + 1 + 1 + 0; } }
-// Of course rust lets us write this recursively.
-pub trait U8 {
-    fn u8() -> u8;
-}
-
-impl U8 for Zero {
-    fn u8() -> u8 {
-        0
-    }
-}
-
-impl<P> U8 for S<P>
-where
-    P: U8,
-{
-    fn u8() -> u8 {
-        P::u8() + 1
-    }
-}
-
-impl<T> ToValue for T
-where
-    T: U8,
-{
-    type T = u8;
-    fn to_value() -> u8 {
-        T::u8()
-    }
-}
-
-pub trait ToValue {
-    type T;
-    fn to_value() -> Self::T;
-}
-
 pub struct Nil;
 pub struct Cons<H, R>(PhantomData<(H, R)>);
 
@@ -147,9 +104,9 @@ pub struct Incr;
 pub struct Decr;
 pub struct Right;
 pub struct Left;
-
 pub struct Loop<Body>(PhantomData<Body>);
 pub struct Write;
+pub struct Read;
 
 pub trait MemoryOp<Mem> {
     type Next;
@@ -222,6 +179,21 @@ where
     type Next = <Machine<Memory<Ml, Mv, Mr>, In, Cons<Mv, Out>> as RunMachine<Pn>>::Next;
 }
 
+impl<Pn, Ml, Mv, Mr, Out> RunMachine<Cons<Read, Pn>> for Machine<Memory<Ml, Mv, Mr>, Nil, Out>
+where
+    Machine<Memory<Ml, Zero, Mr>, Nil, Out>: RunMachine<Pn>,
+{
+    type Next = <Machine<Memory<Ml, Zero, Mr>, Nil, Out> as RunMachine<Pn>>::Next;
+}
+
+impl<Pn, Ml, Mv, Mr, Inv, Inr, Out> RunMachine<Cons<Read, Pn>>
+    for Machine<Memory<Ml, Mv, Mr>, Cons<Inv, Inr>, Out>
+where
+    Machine<Memory<Ml, Inv, Mr>, Inr, Out>: RunMachine<Pn>,
+{
+    type Next = <Machine<Memory<Ml, Inv, Mr>, Inr, Out> as RunMachine<Pn>>::Next;
+}
+
 pub type MakeMachine<Input> = Machine<Memory<Nil, Zero, Nil>, Input, Nil>;
 
 fn _test_incr_write() {
@@ -274,76 +246,54 @@ impl<Mem, In, Out> GetOutput for Machine<Mem, In, Out> {
     type Output = Out;
 }
 
-pub trait AsString {
-    fn as_string() -> String;
+pub trait Make<T> {
+    fn make() -> T;
 }
 
-impl<H, T> AsString for Cons<H, T>
+impl<T> Make<Vec<T>> for Nil {
+    fn make() -> Vec<T> {
+        vec![]
+    }
+}
+
+impl<H, Tail, T> Make<Vec<T>> for Cons<H, Tail>
 where
-    H: U8,
-    T: AsString,
+    H: Make<T>,
+    Tail: Make<Vec<T>>,
 {
-    fn as_string() -> String {
-        format!("{}{}", T::as_string(), H::u8() as char)
+    fn make() -> Vec<T> {
+        let mut res = Tail::make();
+        res.push(H::make());
+        res
     }
 }
 
-impl AsString for Nil {
-    fn as_string() -> String {
-        format!("")
+impl Make<u8> for Zero {
+    fn make() -> u8 {
+        0
     }
 }
 
-impl<H, R> ToValue for Cons<H, R>
+impl<P> Make<u8> for S<P>
 where
-    H: ToValue,
-    R: ToValue,
+    P: Make<u8>,
 {
-    type T = (<H as ToValue>::T, <R as ToValue>::T);
-
-    fn to_value() -> Self::T {
-        return (<H as ToValue>::to_value(), <R as ToValue>::to_value());
+    fn make() -> u8 {
+        P::make() + 1
     }
 }
 
-impl ToValue for Nil {
-    type T = String;
-
-    fn to_value() -> Self::T {
-        "Nil".to_owned()
+impl Make<u32> for Zero {
+    fn make() -> u32 {
+        0
     }
 }
 
-impl<L, V, R> ToValue for Memory<L, V, R>
+impl<P> Make<u32> for S<P>
 where
-    L: ToValue,
-    V: ToValue,
-    R: ToValue,
+    P: Make<u32>,
 {
-    type T = (<L as ToValue>::T, <V as ToValue>::T, <R as ToValue>::T);
-
-    fn to_value() -> Self::T {
-        return (
-            <L as ToValue>::to_value(),
-            <V as ToValue>::to_value(),
-            <R as ToValue>::to_value(),
-        );
-    }
-}
-
-impl<L, V, R> ToValue for Machine<L, V, R>
-where
-    L: ToValue,
-    V: ToValue,
-    R: ToValue,
-{
-    type T = (<L as ToValue>::T, <V as ToValue>::T, <R as ToValue>::T);
-
-    fn to_value() -> Self::T {
-        return (
-            <L as ToValue>::to_value(),
-            <V as ToValue>::to_value(),
-            <R as ToValue>::to_value(),
-        );
+    fn make() -> u32 {
+        P::make() + 1
     }
 }
