@@ -38,42 +38,45 @@ macro_rules! make_cons {
     };
 }
 
+macro_rules! run_bf {
+    (($($arg:ty),*) {$($ins:tt)*}) => {
+        <<MakeMachine<make_cons!($($arg),*)> as RunMachine<compile_bf!($($ins)*)>>::Next as GetOutput>::Output
+    };
+}
+
 fn main() {
     {
         use comptime::*;
+        type HelloWorld = run_bf!(()
         {
-            type HelloWorld = compile_bf!(++++++++[>++++[>++>+++>+++>+< < < < -]>+>+> - > >+[<] < -] > > .>---.+++++++. .+++.> >.< -.<.+++.------.--------.> >+.>++.);
+            ++++++++[>++++[>++>+++>+++>+< < < < -]>+>+> - > >+[<] < -] >
+            > .>---.+++++++. .+++.> >.< -.<.+++.------.--------.> >+.>++.
+        });
 
-            type Initial = MakeMachine<Nil>;
-            type Output = <<Initial as RunMachine<HelloWorld>>::Next as GetOutput>::Output;
+        let hello_world: Vec<u8> = HelloWorld::make();
 
-            let out = <Output as Make<Vec<u8>>>::make();
+        println!(
+            "Ascii output from HelloWorld: {:?}",
+            std::str::from_utf8(&hello_world).unwrap()
+        );
 
-            println!(
-                "From type calculation: {:?}",
-                std::str::from_utf8(&out).unwrap()
-            );
-        }
-        {
-            type Echo = compile_bf!(,[.>,]);
-            type Initial = MakeMachine<make_cons!(One, Three, Five, <Five as Add<Two>>::Sum, Two)>;
-            type Output = <<Initial as RunMachine<Echo>>::Next as GetOutput>::Output;
+        type Cat = run_bf!(
+            (One, Three, Five, <Five as Add<Two>>::Sum, Two)
+            { ,[.>,] });
+        let cat: Vec<u8> = Cat::make();
 
-            let out = <Output as Make<Vec<u8>>>::make();
-
-            println!("From type calculation: {:?}", &out);
-        }
+        println!("u8 values from cat: {:?}", &cat);
     }
 
     {
         let hello_world = runtime::Program::parse(&mut "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.".chars());
         // println!("{}", program.comptime_rep());
         let result = hello_world.run(&mut "".chars());
-        println!("From runtime calculation: {:?}", result);
+        println!("Ascii output from HelloWorld (runtime): {:?}", result);
 
         let echo = runtime::Program::parse(&mut ",[.>,]".chars());
         // println!("{}", program.comptime_rep());
         let result = echo.run(&mut "Hi there!".chars());
-        println!("From runtime calculation: {:?}", result);
+        println!("Ascii output from cat (runtime): {:?}", result);
     }
 }
