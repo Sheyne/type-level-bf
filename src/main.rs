@@ -1,4 +1,5 @@
 mod comptime;
+pub mod peano;
 mod runtime;
 
 macro_rules! compile_bf {
@@ -31,11 +32,6 @@ macro_rules! compile_bf {
 fn main() {
     {
         use comptime::*;
-
-        type Thirty = <Five as Mul<Six>>::Prod;
-        let thirty: u8 = Thirty::make();
-        println!("{}", thirty);
-
         {
             type HelloWorld = compile_bf!(++++++++[>++++[>++>+++>+++>+< < < < -]>+>+> - > >+[<] < -] > > .>---.+++++++. .+++.> >.< -.<.+++.------.--------.> >+.>++.);
 

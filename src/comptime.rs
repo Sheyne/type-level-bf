@@ -1,98 +1,90 @@
 use core::marker::PhantomData;
 use static_assertions::assert_type_eq_all;
 
-// define a zero-sized struct called Zero,
-// note that this struct has no fields and thus takes up
-// no space at runtime. This means that it only *exists*
-// as a compile time concept.
-pub struct Zero;
+#[cfg(feature = "use-typenum")]
+mod nats {
+    pub struct True;
+    pub struct False;
 
-// likewise, define a struct S<P> that represents a
-// nature number. The number is the *S*uccessor of
-// P. So we can encode 1 = S<0>, 2 = S<1> = S<S<0>>
-// P.S., PhantomData is an artifact of Rust. Rust
-// is not happy if you have an unused type parameter.
-// i.e. you can't write: struct S<P>; like we could for
-// Zero.
-pub struct S<P>(PhantomData<P>);
+    pub trait IsNonZero {
+        type Result;
+    }
 
-// These type aliases aren't necessary. We can always
-// write S<S<S<Zero>>> to mean Three, but this is more
-// convenient. None of our axioms will need these definitions
-// but the test code at the bottom will use them
-pub type One = S<Zero>;
-pub type Two = S<One>;
-pub type Three = S<Two>;
-pub type Four = S<Three>;
-pub type Five = S<Four>;
-pub type Six = S<Five>;
+    impl IsNonZero for typenum::U0 {
+        type Result = False;
+    }
+    impl<T, B> IsNonZero for typenum::UInt<T, B> {
+        type Result = True;
+    }
 
-// Define a trait representing the operation of addition.
-// Conceptually we're going to have a bunch of implementations
-// of the trait that look like:
-// impl Add<Three> for Four {
-//    type Sum = Seven;
-// }
-// you get your result by checking the associated type
-// Sum. The trick is to convince rust not to make use write
-// all the additions tables
-pub trait Add<A> {
-    type Sum;
+    pub type Zero = typenum::U0;
+    pub type One = typenum::U1;
+    pub type Two = typenum::U2;
+    pub type Three = typenum::U3;
+    pub type Five = typenum::U5;
+
+    pub trait Add<T> {
+        type Sum;
+    }
+
+    impl<T, U> Add<T> for U
+    where
+        U: core::ops::Add<T>,
+    {
+        type Sum = <U as core::ops::Add<T>>::Output;
+    }
+
+    pub trait IncrNat {
+        type Result;
+    }
+
+    impl<T> IncrNat for T where T : std::ops::Add<typenum::B1>{
+        type Result = <T as std::ops::Add<typenum::B1>>::Output;
+    }
+    pub trait DecrNat {
+        type Result;
+    }
+
+    impl<T> DecrNat for T where T : std::ops::Sub<typenum::B1>{
+        type Result = <T as std::ops::Sub<typenum::B1>>::Output;
+    }
 }
 
-// Zero is easy, 0 + A = A
-impl<A> Add<Zero> for A {
-    type Sum = A;
+#[cfg(not(feature = "use-typenum"))]
+mod nats {
+    pub use crate::peano::{DecrNat, One, Two, Five, Four, Six, Three, Add};
+
+    use crate::peano;
+
+    pub type Zero = peano::Zero;
+    pub struct True;
+    pub struct False;
+
+    pub trait IsNonZero {
+        type Result;
+    }
+
+    impl IsNonZero for Zero {
+        type Result = False;
+    }
+    impl<T> IsNonZero for peano::S<T> {
+        type Result = True;
+    }
+
+    pub trait IncrNat {
+        type Result;
+    }
+
+    impl<T> IncrNat for T {
+        type Result = peano::S<T>;
+    }
+
+    pub trait NonZero {}
+
+    impl<T> NonZero for peano::S<T> {}
 }
 
-// A+B is harder. We're going to use the fact that we can rewrite
-// A+B as A+1+B' where B = B' + 1. Thus
-// A+S(B) = S(A) + B. We can keep subtracting 1 from B and adding 1
-// to A until we have A + 0 = A
-// Effectively the below trait represents the rule:
-// A + S(B) = S(A) + B
-impl<A, B> Add<S<B>> for A
-where
-    S<A>: Add<B>,
-{
-    type Sum = <S<A> as Add<B>>::Sum;
-}
-
-pub trait Mul<A> {
-    type Prod;
-}
-
-impl<A> Mul<Zero> for A {
-    type Prod = Zero;
-}
-
-impl<A, B> Mul<S<B>> for A
-where
-    A: Mul<B>,
-    <A as Mul<B>>::Prod: Add<A>,
-{
-    // A*B' = A * (B'-1+1)
-    //      = A + A * (B'-1)
-    // ->
-    // A*S(B) = A * B + A
-    type Prod = <<A as Mul<B>>::Prod as Add<A>>::Sum;
-}
-
-assert_type_eq_all!(<Two as Mul<Three>>::Prod, Six);
-
-pub trait DecrNat {
-    type Result;
-}
-
-impl DecrNat for Zero {
-    type Result = Zero;
-}
-
-impl<A> DecrNat for S<A> {
-    type Result = A;
-}
-
-assert_type_eq_all!(<Five as DecrNat>::Result, Four);
+pub use nats::*;
 
 pub struct Nil;
 pub struct Cons<H, R>(PhantomData<(H, R)>);
@@ -112,8 +104,11 @@ pub trait MemoryOp<Mem> {
     type Next;
 }
 
-impl<Ml, Mv, Mr> MemoryOp<Incr> for Memory<Ml, Mv, Mr> {
-    type Next = Memory<Ml, S<Mv>, Mr>;
+impl<Ml, Mv, Mr> MemoryOp<Incr> for Memory<Ml, Mv, Mr>
+where
+    Mv: IncrNat,
+{
+    type Next = Memory<Ml, <Mv as IncrNat>::Result, Mr>;
 }
 
 impl<Ml, Mv, Mr> MemoryOp<Decr> for Memory<Ml, Mv, Mr>
@@ -139,21 +134,37 @@ impl<Mr, Mv> RunMachine<Left> for Memory<Nil, Mv, Mr> {
     type Next = Memory<Nil, Zero, Cons<Mv, Mr>>;
 }
 
-impl<Body, Rest, Ml, Mr, In, Out> RunMachine<Cons<Loop<Body>, Rest>>
-    for Machine<Memory<Ml, Zero, Mr>, In, Out>
+pub trait RunMachineIntermediate<Body, Rest, T> {
+    type Result;
+}
+
+impl<Body, Rest, M> RunMachineIntermediate<Body, Rest, M> for False
 where
-    Self: RunMachine<Rest>,
+    M: RunMachine<Rest>,
 {
-    type Next = <Self as RunMachine<Rest>>::Next;
+    type Result = <M as RunMachine<Rest>>::Next;
+}
+
+impl<Body, Rest, M> RunMachineIntermediate<Body, Rest, M> for True
+where
+    <M as RunMachine<Body>>::Next: RunMachine<Cons<Loop<Body>, Rest>>,
+    M: RunMachine<Body>,
+{
+    type Result = <<M as RunMachine<Body>>::Next as RunMachine<Cons<Loop<Body>, Rest>>>::Next;
 }
 
 impl<Body, Rest, Ml, Mr, In, Out, N> RunMachine<Cons<Loop<Body>, Rest>>
-    for Machine<Memory<Ml, S<N>, Mr>, In, Out>
+    for Machine<Memory<Ml, N, Mr>, In, Out>
 where
-    Self: RunMachine<Body>,
-    <Self as RunMachine<Body>>::Next: RunMachine<Cons<Loop<Body>, Rest>>,
+    N: IsNonZero,
+    <N as IsNonZero>::Result:
+        RunMachineIntermediate<Body, Rest, Machine<Memory<Ml, N, Mr>, In, Out>>,
 {
-    type Next = <<Self as RunMachine<Body>>::Next as RunMachine<Cons<Loop<Body>, Rest>>>::Next;
+    type Next = <<N as IsNonZero>::Result as RunMachineIntermediate<
+        Body,
+        Rest,
+        Machine<Memory<Ml, N, Mr>, In, Out>,
+    >>::Result;
 }
 
 pub trait RunMachine<Prog> {
@@ -268,13 +279,38 @@ where
     }
 }
 
+
+#[cfg(feature = "use-typenum")]
+impl<T> Make<u8> for T where T : typenum::Unsigned
+{
+    fn make() -> u8 {
+        T::to_u8()
+    }
+}
+#[cfg(feature = "use-typenum")]
+impl<T> Make<u32> for T where T : typenum::Unsigned
+{
+    fn make() -> u32 {
+        T::to_u32()
+    }
+}
+
+#[cfg(not(feature = "use-typenum"))]
 impl Make<u8> for Zero {
     fn make() -> u8 {
         0
     }
 }
 
-impl<P> Make<u8> for S<P>
+#[cfg(not(feature = "use-typenum"))]
+impl Make<u32> for Zero {
+    fn make() -> u32 {
+        0
+    }
+}
+
+#[cfg(not(feature = "use-typenum"))]
+impl<P> Make<u8> for crate::peano::S<P>
 where
     P: Make<u8>,
 {
@@ -283,13 +319,8 @@ where
     }
 }
 
-impl Make<u32> for Zero {
-    fn make() -> u32 {
-        0
-    }
-}
-
-impl<P> Make<u32> for S<P>
+#[cfg(not(feature = "use-typenum"))]
+impl<P> Make<u32> for crate::peano::S<P>
 where
     P: Make<u32>,
 {
