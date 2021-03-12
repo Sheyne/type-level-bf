@@ -143,134 +143,156 @@ pub struct Cons<H, R>(PhantomData<(H, R)>);
 pub struct Memory<L, V, R>(PhantomData<(L, V, R)>);
 pub struct Machine<Mem, Inp, Out>(PhantomData<(Mem, Inp, Out)>);
 
-pub struct Incr<Next>(PhantomData<Next>);
-pub struct Decr<Next>(PhantomData<Next>);
-pub struct Right<Next>(PhantomData<Next>);
-pub struct Left<Next>(PhantomData<Next>);
-pub struct Loop<Body, Next>(PhantomData<(Body, Next)>);
-pub struct Write<Next>(PhantomData<Next>);
+pub struct Incr;
+pub struct Decr;
+pub struct Right;
+pub struct Left;
 
-pub trait PureStep {}
-impl<T> PureStep for Incr<T> {}
-impl<T> PureStep for Decr<T> {}
-impl<T> PureStep for Right<T> {}
-impl<T> PureStep for Left<T> {}
-impl<T, U> PureStep for Loop<T, U> {}
+pub struct Loop<Body>(PhantomData<Body>);
+pub struct Write;
 
-pub trait Step<Prog> {
+pub trait MemoryOp<Mem> {
     type Next;
 }
 
-impl<T> Step<Nil> for T {
+impl<Ml, Mv, Mr> MemoryOp<Incr> for Memory<Ml, Mv, Mr> {
+    type Next = Memory<Ml, S<Mv>, Mr>;
+}
+
+impl<Ml, Mv, Mr> MemoryOp<Decr> for Memory<Ml, Mv, Mr>
+where
+    Mv: DecrNat,
+{
+    type Next = Memory<Ml, <Mv as DecrNat>::Result, Mr>;
+}
+
+impl<Ml, Mv, Mr1, Mrr> MemoryOp<Right> for Memory<Ml, Mv, Cons<Mr1, Mrr>> {
+    type Next = Memory<Cons<Mv, Ml>, Mr1, Mrr>;
+}
+
+impl<Ml, Mv> MemoryOp<Right> for Memory<Ml, Mv, Nil> {
+    type Next = Memory<Cons<Mv, Ml>, Zero, Nil>;
+}
+
+impl<Mr, Mv, Ml1, Mlr> MemoryOp<Left> for Memory<Cons<Ml1, Mlr>, Mv, Mr> {
+    type Next = Memory<Mlr, Ml1, Cons<Mv, Mr>>;
+}
+
+impl<Mr, Mv> RunMachine<Left> for Memory<Nil, Mv, Mr> {
+    type Next = Memory<Nil, Zero, Cons<Mv, Mr>>;
+}
+
+impl<Body, Rest, Ml, Mr, In, Out> RunMachine<Cons<Loop<Body>, Rest>>
+    for Machine<Memory<Ml, Zero, Mr>, In, Out>
+where
+    Self: RunMachine<Rest>,
+{
+    type Next = <Self as RunMachine<Rest>>::Next;
+}
+
+impl<Body, Rest, Ml, Mr, In, Out, N> RunMachine<Cons<Loop<Body>, Rest>>
+    for Machine<Memory<Ml, S<N>, Mr>, In, Out>
+where
+    Self: RunMachine<Body>,
+    <Self as RunMachine<Body>>::Next: RunMachine<Cons<Loop<Body>, Rest>>,
+{
+    type Next = <<Self as RunMachine<Body>>::Next as RunMachine<Cons<Loop<Body>, Rest>>>::Next;
+}
+
+pub trait RunMachine<Prog> {
+    type Next;
+}
+
+impl<T> RunMachine<Nil> for T {
     type Next = T;
 }
 
-impl<Ml, Mv, Mr, Pn> Step<Incr<Pn>> for Memory<Ml, Mv, Mr>
+impl<Action, Rest, Mem, In, Out> RunMachine<Cons<Action, Rest>> for Machine<Mem, In, Out>
 where
-    Memory<Ml, S<Mv>, Mr>: Step<Pn>,
+    Mem: MemoryOp<Action>,
+    Machine<<Mem as MemoryOp<Action>>::Next, In, Out>: RunMachine<Rest>,
 {
-    type Next = <Memory<Ml, S<Mv>, Mr> as Step<Pn>>::Next;
+    type Next = <Machine<<Mem as MemoryOp<Action>>::Next, In, Out> as RunMachine<Rest>>::Next;
 }
 
-impl<Ml, Mv, Mr, Pn> Step<Decr<Pn>> for Memory<Ml, Mv, Mr>
+impl<Pn, Ml, Mv, Mr, In, Out> RunMachine<Cons<Write, Pn>> for Machine<Memory<Ml, Mv, Mr>, In, Out>
 where
-    Mv: DecrNat,
-    Memory<Ml, <Mv as DecrNat>::Result, Mr>: Step<Pn>,
+    Machine<Memory<Ml, Mv, Mr>, In, Cons<Mv, Out>>: RunMachine<Pn>,
 {
-    type Next = <Memory<Ml, <Mv as DecrNat>::Result, Mr> as Step<Pn>>::Next;
+    type Next = <Machine<Memory<Ml, Mv, Mr>, In, Cons<Mv, Out>> as RunMachine<Pn>>::Next;
 }
 
-impl<Ml, Mv, Mr1, Mrr, Pn> Step<Right<Pn>> for Memory<Ml, Mv, Cons<Mr1, Mrr>>
-where
-    Memory<Cons<Mv, Ml>, Mr1, Mrr>: Step<Pn>,
-{
-    type Next = <Memory<Cons<Mv, Ml>, Mr1, Mrr> as Step<Pn>>::Next;
-}
+pub type MakeMachine<Input> = Machine<Memory<Nil, Zero, Nil>, Input, Nil>;
 
-impl<Ml, Mv, Pn> Step<Right<Pn>> for Memory<Ml, Mv, Nil>
-where
-    Memory<Cons<Mv, Ml>, Zero, Nil>: Step<Pn>,
-{
-    type Next = <Memory<Cons<Mv, Ml>, Zero, Nil> as Step<Pn>>::Next;
-}
+fn _test_incr_write() {
+    type StateInital = MakeMachine<Nil>;
+    type StateExpected = Machine<Memory<Nil, One, Nil>, Nil, Cons<One, Nil>>;
+    type Program = Cons<Incr, Cons<Write, Nil>>;
 
-impl<Mr, Mv, Ml1, Mlr, Pn> Step<Left<Pn>> for Memory<Cons<Ml1, Mlr>, Mv, Mr>
-where
-    Memory<Mlr, Ml1, Cons<Mv, Mr>>: Step<Pn>,
-{
-    type Next = <Memory<Mlr, Ml1, Cons<Mv, Mr>> as Step<Pn>>::Next;
-}
-
-impl<Mr, Mv, Pn> Step<Left<Pn>> for Memory<Nil, Mv, Mr>
-where
-    Memory<Nil, Zero, Cons<Mv, Mr>>: Step<Pn>,
-{
-    type Next = <Memory<Nil, Zero, Cons<Mv, Mr>> as Step<Pn>>::Next;
-}
-
-impl<Lbody, Lnext, Ml, Mr> Step<Loop<Lbody, Lnext>> for Memory<Ml, Zero, Mr>
-where
-    Self: Step<Lnext>,
-{
-    type Next = <Self as Step<Lnext>>::Next;
-}
-
-impl<Lbody, Lnext, Ml, Mr, N> Step<Loop<Lbody, Lnext>> for Memory<Ml, S<N>, Mr>
-where
-    Memory<Ml, S<N>, Mr>: Step<Lbody>,
-    <Memory<Ml, S<N>, Mr> as Step<Lbody>>::Next: Step<Loop<Lbody, Lnext>>,
-{
-    type Next = <<Memory<Ml, S<N>, Mr> as Step<Lbody>>::Next as Step<Loop<Lbody, Lnext>>>::Next;
-}
-
-impl<Prog, Mem, In, Out> Step<Prog> for Machine<Mem, In, Out>
-where
-    Prog: PureStep,
-    Mem: Step<Prog>,
-{
-    type Next = <Mem as Step<Prog>>::Next;
-}
-
-impl<Pn, Ml, Mv, Mr, In, Out> Step<Write<Pn>> for Machine<Memory<Ml, Mv, Mr>, In, Out>
-where
-    Machine<Memory<Ml, Mv, Mr>, In, Cons<Mv, Out>>: Step<Pn>,
-{
-    type Next = <Machine<Memory<Ml, Mv, Mr>, In, Cons<Mv, Out>> as Step<Pn>>::Next;
+    assert_type_eq_all!(<StateInital as RunMachine<Program>>::Next, StateExpected);
 }
 
 fn _test_incr_decr() {
-    type StateInital = Memory<Nil, Zero, Nil>;
-    type StateExpected1 = Memory<Nil, One, Nil>;
-    type StateExpected2 = Memory<Nil, Two, Nil>;
+    type StateInital = Machine<Memory<Nil, Zero, Nil>, Nil, Nil>;
+    type StateExpected1 = Machine<Memory<Nil, One, Nil>, Nil, Nil>;
+    type StateExpected2 = Machine<Memory<Nil, Two, Nil>, Nil, Nil>;
 
-    assert_type_eq_all!(<StateInital as Step<Incr<Nil>>>::Next, StateExpected1);
-    assert_type_eq_all!(<StateInital as Step<Incr<Incr<Nil>>>>::Next, StateExpected2);
-    assert_type_eq_all!(
-        <StateInital as Step<Incr<Incr<Decr<Nil>>>>>::Next,
-        StateExpected1
-    );
+    type Program1 = Cons<Incr, Nil>;
+    type Program2 = Cons<Incr, Cons<Incr, Nil>>;
+    type Program3 = Cons<Incr, Cons<Incr, Cons<Decr, Nil>>>;
+
+    assert_type_eq_all!(<StateInital as RunMachine<Program1>>::Next, StateExpected1);
+    assert_type_eq_all!(<StateInital as RunMachine<Program2>>::Next, StateExpected2);
+    assert_type_eq_all!(<StateInital as RunMachine<Program3>>::Next, StateExpected1);
 }
 
 fn _test_move_left_right() {
-    type StateInital = Memory<Nil, One, Nil>;
-    type StateExpected1 = Memory<Cons<One, Nil>, Zero, Nil>;
-    type StateExpected2 = Memory<Nil, One, Cons<Zero, Nil>>;
+    type StateInital = Machine<Memory<Nil, One, Nil>, Nil, Nil>;
+    type StateExpected1 = Machine<Memory<Cons<One, Nil>, Zero, Nil>, Nil, Nil>;
+    type StateExpected2 = Machine<Memory<Nil, One, Cons<Zero, Nil>>, Nil, Nil>;
 
-    assert_type_eq_all!(<StateInital as Step<Right<Nil>>>::Next, StateExpected1);
-    assert_type_eq_all!(
-        <StateInital as Step<Right<Left<Nil>>>>::Next,
-        StateExpected2
-    );
+    type Program1 = Cons<Right, Nil>;
+    type Program2 = Cons<Right, Cons<Left, Nil>>;
+
+    assert_type_eq_all!(<StateInital as RunMachine<Program1>>::Next, StateExpected1);
+    assert_type_eq_all!(<StateInital as RunMachine<Program2>>::Next, StateExpected2);
 }
 
 fn _test_loop() {
-    type StateInital = Memory<Nil, Two, Nil>;
-    type StateExpected = Memory<Nil, One, Nil>;
-    type Program = Loop<Decr<Nil>, Incr<Nil>>;
+    type StateInital = Machine<Memory<Nil, Two, Nil>, Nil, Nil>;
+    type StateExpected = Machine<Memory<Nil, One, Nil>, Nil, Nil>;
+    type Program = Cons<Loop<Cons<Decr, Nil>>, Cons<Incr, Nil>>;
 
-    assert_type_eq_all!(<StateInital as Step<Program>>::Next, StateExpected);
+    assert_type_eq_all!(<StateInital as RunMachine<Program>>::Next, StateExpected);
 }
 
+pub trait GetOutput {
+    type Output;
+}
+
+impl<Mem, In, Out> GetOutput for Machine<Mem, In, Out> {
+    type Output = Out;
+}
+
+pub trait AsString {
+    fn as_string() -> String;
+}
+
+impl<H, T> AsString for Cons<H, T>
+where
+    H: U8,
+    T: AsString,
+{
+    fn as_string() -> String {
+        format!("{}{}", T::as_string(), H::u8() as char)
+    }
+}
+
+impl AsString for Nil {
+    fn as_string() -> String {
+        format!("")
+    }
+}
 
 impl<H, R> ToValue for Cons<H, R>
 where
@@ -293,6 +315,23 @@ impl ToValue for Nil {
 }
 
 impl<L, V, R> ToValue for Memory<L, V, R>
+where
+    L: ToValue,
+    V: ToValue,
+    R: ToValue,
+{
+    type T = (<L as ToValue>::T, <V as ToValue>::T, <R as ToValue>::T);
+
+    fn to_value() -> Self::T {
+        return (
+            <L as ToValue>::to_value(),
+            <V as ToValue>::to_value(),
+            <R as ToValue>::to_value(),
+        );
+    }
+}
+
+impl<L, V, R> ToValue for Machine<L, V, R>
 where
     L: ToValue,
     V: ToValue,

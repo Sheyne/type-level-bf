@@ -57,6 +57,24 @@ impl Program {
         }
     }
 
+    pub fn comptime_rep(&self) -> String {
+        use Program::*;
+        match self {
+            Empty => format!("Nil"),
+            Left(next) => format!("Cons<Left,{}>", Program::comptime_rep(&*next)),
+            Right(next) => format!("Cons<Right,{}>", Program::comptime_rep(&*next)),
+            Incr(next) => format!("Cons<Incr,{}>", Program::comptime_rep(&*next)),
+            Decr(next) => format!("Cons<Decr,{}>", Program::comptime_rep(&*next)),
+            Input(next) => format!("Cons<Read,{}>", Program::comptime_rep(&*next)),
+            Output(next) => format!("Cons<Write,{}>", Program::comptime_rep(&*next)),
+            Loop(body, next) => format!(
+                "Cons<Loop<{}>, {}>",
+                Program::comptime_rep(&*body),
+                Program::comptime_rep(&*next)
+            ),
+        }
+    }
+
     fn run_context(
         &self,
         idx: &mut usize,
