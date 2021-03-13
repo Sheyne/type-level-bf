@@ -7,25 +7,25 @@ macro_rules! compile_bf {
         Nil
     };
     (.$($i:tt)*) => {
-        Cons<Write, compile_bf!($($i)*)>
+        Cons<ops::Write, compile_bf!($($i)*)>
     };
     (+$($i:tt)*) => {
-        Cons<Incr, compile_bf!($($i)*)>
+        Cons<ops::Incr, compile_bf!($($i)*)>
     };
     (-$($i:tt)*) => {
-        Cons<Decr, compile_bf!($($i)*)>
+        Cons<ops::Decr, compile_bf!($($i)*)>
     };
     (<$($i:tt)*) => {
-        Cons<Left, compile_bf!($($i)*)>
+        Cons<ops::Left, compile_bf!($($i)*)>
     };
     (>$($i:tt)*) => {
-        Cons<Right, compile_bf!($($i)*)>
+        Cons<ops::Right, compile_bf!($($i)*)>
     };
     (,$($i:tt)*) => {
-        Cons<Read, compile_bf!($($i)*)>
+        Cons<ops::Read, compile_bf!($($i)*)>
     };
     ([$($i:tt)*]$($j:tt)*) => {
-        Cons<Loop<compile_bf!($($i)*)>, compile_bf!($($j)*)>
+        Cons<ops::Loop<compile_bf!($($i)*)>, compile_bf!($($j)*)>
     };
  }
 
